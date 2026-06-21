@@ -1,0 +1,513 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Angular Abstract Generator</title>
+
+<style>
+body{
+    margin:0;
+    background:#111;
+    font-family:system-ui,sans-serif;
+    overflow:hidden;
+}
+
+#controls{
+    position:fixed;
+    top:10px;
+    left:10px;
+    z-index:10;
+
+    background:rgba(255,255,255,.95);
+    padding:12px;
+    border-radius:12px;
+
+    display:grid;
+    gap:8px;
+
+    max-width:250px;
+    box-shadow:0 10px 30px rgba(0,0,0,.3);
+}
+
+label{
+    display:grid;
+    gap:3px;
+    font-size:13px;
+}
+
+canvas{
+    position:absolute;
+    inset:0;
+    margin:auto;
+    background:white;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+
+button,
+select,
+input{
+    font:inherit;
+}
+</style>
+</head>
+
+<body>
+
+<div id="controls">
+
+<button id="generateBtn">Generate</button>
+
+<label>
+Palette
+<select id="palette">
+<option value="random">Random</option>
+<option value="classic">Classic</option>
+<option value="redlime">Red Lime</option>
+<option value="cyanorange">Cyan Orange</option>
+<option value="dark">Dark</option>
+</select>
+</label>
+
+<label>
+Format
+<select id="format">
+<option value="portrait">Portrait</option>
+<option value="landscape">Landscape</option>
+<option value="square">Square</option>
+</select>
+</label>
+
+<label>
+Density
+<input id="density" type="range" min="4" max="18" value="10">
+</label>
+
+<label>
+Black Wedges
+<input id="blackness" type="range" min="0" max="70" value="25">
+</label>
+
+<label>
+Thin Slivers
+<input id="slivers" type="range" min="0" max="100" value="35">
+</label>
+
+<label>
+Dominant Wedge
+<input id="dominant" type="range" min="0" max="100" value="75">
+</label>
+
+<label>
+<input id="secondFan" type="checkbox" checked>
+Secondary Fan
+</label>
+
+<label>
+<input id="border" type="checkbox" checked>
+Paper Border
+</label>
+
+<button id="downloadBtn">
+Download PNG
+</button>
+
+</div>
+
+<canvas id="canvas" width="720" height="1100"></canvas>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const palettes = {
+
+classic:[
+"#ff4a00",
+"#d60000",
+"#6926a8",
+"#0099c8",
+"#99ee00",
+"#050505"
+],
+
+redlime:[
+"#c40000",
+"#050505",
+"#b7ff00",
+"#c8f7ff"
+],
+
+cyanorange:[
+"#00a8c8",
+"#ff5a00",
+"#7a42c8",
+"#76df57",
+"#050505"
+],
+
+dark:[
+"#d71920",
+"#050505",
+"#7b002c",
+"#b9ef00",
+"#b8f5ff"
+]
+
+};
+
+function rand(a,b){
+    return a + Math.random()*(b-a);
+}
+
+function pick(arr){
+    return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function pointFromAngle(origin,angle,length){
+    return {
+        x:origin.x + Math.cos(angle)*length,
+        y:origin.y + Math.sin(angle)*length
+    };
+}
+
+function drawPolygon(points,color){
+
+    ctx.beginPath();
+
+    ctx.moveTo(points[0].x,points[0].y);
+
+    for(let i=1;i<points.length;i++){
+        ctx.lineTo(points[i].x,points[i].y);
+    }
+
+    ctx.closePath();
+
+    ctx.fillStyle=color;
+    ctx.fill();
+
+    ctx.lineWidth=rand(4,10);
+    ctx.strokeStyle="#050505";
+    ctx.lineJoin="round";
+    ctx.stroke();
+}
+
+function offCanvasPoint(w,h){
+
+    const side=Math.floor(rand(0,4));
+
+    if(side===0)
+        return {
+            x:rand(-500,w+500),
+            y:-rand(150,700)
+        };
+
+    if(side===1)
+        return {
+            x:w+rand(150,700),
+            y:rand(-300,h+300)
+        };
+
+    if(side===2)
+        return {
+            x:rand(-500,w+500),
+            y:h+rand(150,700)
+        };
+
+    return {
+        x:-rand(150,700),
+        y:rand(-300,h+300)
+    };
+}
+
+function selectedPalette(){
+
+    const value =
+        document.getElementById("palette").value;
+
+    if(value==="random"){
+        return pick(Object.values(palettes));
+    }
+
+    return palettes[value];
+}
+
+function drawFan(apex,palette,count,radius){
+
+    const sliverFreq =
+        document.getElementById("slivers").value/100;
+
+    const blackChance =
+        document.getElementById("blackness").value/100;
+
+    const dominantChance =
+        document.getElementById("dominant").value/100;
+
+    const start=
+        rand(-Math.PI,Math.PI);
+
+    const spread=
+        rand(
+            Math.PI*0.6,
+            Math.PI*1.4
+        );
+
+    let angles=[start];
+
+    for(let i=1;i<count;i++){
+
+        let step=spread/count;
+
+        if(Math.random()<sliverFreq){
+            step*=0.15;
+        }
+
+        angles.push(
+            angles[i-1]+step
+        );
+    }
+
+    angles.sort((a,b)=>a-b);
+
+    const dominantIndex=
+        Math.floor(
+            rand(0,angles.length-1)
+        );
+
+    if(Math.random()<dominantChance){
+
+        angles[dominantIndex+1]+=
+            rand(.2,.8);
+    }
+
+    for(let i=0;i<angles.length-1;i++){
+
+        const p1=
+            pointFromAngle(
+                apex,
+                angles[i],
+                radius
+            );
+
+        const p2=
+            pointFromAngle(
+                apex,
+                angles[i+1],
+                radius
+            );
+
+        let color=pick(palette);
+
+        if(Math.random()<blackChance){
+            color="#050505";
+        }
+
+        drawPolygon(
+            [apex,p1,p2],
+            color
+        );
+    }
+}
+
+function setCanvasSize(){
+
+    const format =
+        document.getElementById("format").value;
+
+    if(format==="portrait"){
+        canvas.width=720;
+        canvas.height=1100;
+    }
+
+    if(format==="landscape"){
+        canvas.width=1200;
+        canvas.height=800;
+    }
+
+    if(format==="square"){
+        canvas.width=1000;
+        canvas.height=1000;
+    }
+}
+
+function generate(){
+
+    setCanvasSize();
+
+    const w=canvas.width;
+    const h=canvas.height;
+
+    const palette=
+        selectedPalette();
+
+    const density=
+        Number(
+            document.getElementById(
+                "density"
+            ).value
+        );
+
+    const useBorder=
+        document.getElementById(
+            "border"
+        ).checked;
+
+    const useSecondFan=
+        document.getElementById(
+            "secondFan"
+        ).checked;
+
+    ctx.clearRect(0,0,w,h);
+
+    ctx.fillStyle=
+        useBorder
+        ? "#f3efe4"
+        : "#ffffff";
+
+    ctx.fillRect(
+        0,
+        0,
+        w,
+        h
+    );
+
+    const margin=
+        useBorder
+        ? rand(25,55)
+        : 0;
+
+    ctx.save();
+
+    ctx.beginPath();
+
+    ctx.rect(
+        margin,
+        margin,
+        w-margin*2,
+        h-margin*2
+    );
+
+    ctx.clip();
+
+    ctx.fillStyle=
+        pick(
+            palette.filter(
+                c=>c!=="#050505"
+            )
+        );
+
+    ctx.fillRect(
+        margin,
+        margin,
+        w-margin*2,
+        h-margin*2
+    );
+
+    const radius=
+        Math.sqrt(
+            w*w+h*h
+        )*2.5;
+
+    drawFan(
+        offCanvasPoint(w,h),
+        palette,
+        density,
+        radius
+    );
+
+    if(useSecondFan){
+
+        drawFan(
+            offCanvasPoint(w,h),
+            palette,
+            Math.floor(
+                density*rand(.5,.8)
+            ),
+            radius
+        );
+    }
+
+    const bladeApex=
+        offCanvasPoint(w,h);
+
+    const angle=
+        rand(
+            -Math.PI,
+            Math.PI
+        );
+
+    const bladeWidth=
+        rand(
+            .08,
+            .25
+        );
+
+    drawPolygon([
+        bladeApex,
+        pointFromAngle(
+            bladeApex,
+            angle,
+            radius
+        ),
+        pointFromAngle(
+            bladeApex,
+            angle+bladeWidth,
+            radius
+        )
+    ],
+    pick(palette));
+
+    ctx.restore();
+
+    if(useBorder){
+
+        ctx.lineWidth=4;
+
+        ctx.strokeStyle="#111";
+
+        ctx.strokeRect(
+            margin,
+            margin,
+            w-margin*2,
+            h-margin*2
+        );
+    }
+}
+
+document
+.getElementById("generateBtn")
+.addEventListener(
+    "click",
+    generate
+);
+
+canvas.addEventListener(
+    "click",
+    generate
+);
+
+document
+.getElementById("downloadBtn")
+.addEventListener(
+    "click",
+    ()=>{
+        const a=
+            document.createElement("a");
+
+        a.download=
+            "abstract.png";
+
+        a.href=
+            canvas.toDataURL(
+                "image/png"
+            );
+
+        a.click();
+    }
+);
+
+generate();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Angular Abstract Generator</title>
+<style>
+  body { margin:0; background:#111; display:grid; place-items:center; height:100vh; }
+  canvas { background:white; box-shadow:0 0 30px #000; }
+  button { position:fixed; top:16px; left:16px; font:16px sans-serif; }
+</style>
+</head>
+<body>
+<button onclick="generate()">Generate</button>
+<canvas id="c" width="700" height="1000"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+const palette = [
+  "#f04a00", "#e00014", "#9d1631", "#5b2a90",
+  "#00a8c8", "#5ee6d0", "#b9ef00", "#58c900",
+  "#050505", "#f2eee3"
+];
+
+function rand(a,b){ return a + Math.random()*(b-a); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+function drawPoly(points, color) {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let p of points.slice(1)) ctx.lineTo(p.x, p.y);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  ctx.lineWidth = rand(5, 11);
+  ctx.strokeStyle = "#050505";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+}
+
+function generate() {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  // paper border
+  ctx.fillStyle = "#f5f1e8";
+  ctx.fillRect(0,0,w,h);
+
+  const margin = rand(20, 55);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(margin, margin, w-margin*2, h-margin*2);
+  ctx.clip();
+
+  ctx.fillStyle = pick(palette.filter(c => c !== "#050505"));
+  ctx.fillRect(margin, margin, w-margin*2, h-margin*2);
+
+  // one or two off-canvas convergence points
+  const vp1 = {
+    x: Math.random() < .5 ? rand(-350, 80) : rand(w-80, w+350),
+    y: Math.random() < .5 ? rand(-250, 120) : rand(h-120, h+250)
+  };
+
+  const edges = [];
+  const n = Math.floor(rand(7, 12));
+
+  for (let i=0; i<n; i++) {
+    const side = Math.floor(rand(0,4));
+    let p;
+    if (side === 0) p = {x: rand(margin,w-margin), y: margin};
+    if (side === 1) p = {x: w-margin, y: rand(margin,h-margin)};
+    if (side === 2) p = {x: rand(margin,w-margin), y: h-margin};
+    if (side === 3) p = {x: margin, y: rand(margin,h-margin)};
+    edges.push(p);
+  }
+
+  edges.sort((a,b) => Math.atan2(a.y-vp1.y,a.x-vp1.x) - Math.atan2(b.y-vp1.y,b.x-vp1.x));
+
+  for (let i=0; i<edges.length-1; i++) {
+    drawPoly([vp1, edges[i], edges[i+1]], pick(palette));
+  }
+
+  // add a few long blade shapes
+  for (let i=0; i<3; i++) {
+    const a = pick(edges);
+    const b = pick(edges);
+    const tip = {
+      x: Math.random() < .5 ? rand(-100, w+100) : vp1.x,
+      y: Math.random() < .5 ? rand(-100, h+100) : vp1.y
+    };
+    drawPoly([a, b, tip], pick(palette));
+  }
+
+  ctx.restore();
+
+  // inner frame line
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "#111";
+  ctx.strokeRect(margin, margin, w-margin*2, h-margin*2);
+}
+
+generate();
+</script>
+</body>
+</html>
