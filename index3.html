@@ -1,0 +1,649 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ribbon Abstract Generator</title>
+
+<style>
+:root{
+    color-scheme:dark;
+}
+
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    min-height:100vh;
+    overflow:hidden;
+    background:#141414;
+    font-family:system-ui,sans-serif;
+}
+
+#controls{
+    position:fixed;
+    top:12px;
+    left:12px;
+    z-index:10;
+    width:min(260px,calc(100vw - 24px));
+    max-height:calc(100vh - 24px);
+    overflow:auto;
+    display:grid;
+    gap:9px;
+    padding:12px;
+    color:#181818;
+    background:rgba(248,246,239,.96);
+    border:1px solid rgba(0,0,0,.12);
+    border-radius:8px;
+    box-shadow:0 18px 45px rgba(0,0,0,.34);
+}
+
+label{
+    display:grid;
+    gap:4px;
+    font-size:13px;
+    line-height:1.2;
+}
+
+.row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+}
+
+button,
+select,
+input{
+    min-width:0;
+    font:inherit;
+}
+
+button{
+    min-height:34px;
+    border:1px solid #222;
+    color:#f7f3e9;
+    background:#161616;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+button:hover{
+    background:#303030;
+}
+
+input[type="text"]{
+    width:100%;
+    padding:6px 7px;
+    border:1px solid rgba(0,0,0,.32);
+    border-radius:5px;
+    background:#fffdfa;
+}
+
+select{
+    width:100%;
+}
+
+canvas{
+    position:absolute;
+    inset:0;
+    margin:auto;
+    max-width:calc(100vw - 24px);
+    max-height:calc(100vh - 24px);
+    background:#f3efe4;
+    box-shadow:0 24px 70px rgba(0,0,0,.62);
+}
+
+@media (max-width:720px){
+    #controls{
+        top:8px;
+        left:8px;
+        width:220px;
+        padding:10px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="controls">
+    <div class="row">
+        <button id="generateBtn">Generate</button>
+        <button id="downloadBtn">PNG</button>
+    </div>
+
+    <label>
+        Palette
+        <select id="palette">
+            <option value="random">Random</option>
+            <option value="classic">Classic</option>
+            <option value="signal">Signal</option>
+            <option value="coolhot">Cool Hot</option>
+            <option value="acid">Acid</option>
+            <option value="night">Night</option>
+        </select>
+    </label>
+
+    <label>
+        Format
+        <select id="format">
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+            <option value="square">Square</option>
+        </select>
+    </label>
+
+    <label>
+        Major Forms
+        <input id="forms" type="range" min="4" max="12" value="7">
+    </label>
+
+    <label>
+        Black Bands
+        <input id="blackness" type="range" min="0" max="70" value="32">
+    </label>
+
+    <label>
+        Thin Splits
+        <input id="splits" type="range" min="0" max="100" value="40">
+    </label>
+
+    <label>
+        Dominant Diagonal
+        <input id="dominant" type="range" min="0" max="100" value="86">
+    </label>
+
+    <label>
+        <input id="crossings" type="checkbox" checked>
+        Crossing bands
+    </label>
+
+    <label>
+        <input id="tips" type="checkbox" checked>
+        Triangular tips
+    </label>
+
+    <label>
+        <input id="border" type="checkbox" checked>
+        Paper border
+    </label>
+
+    <label>
+        Seed
+        <input id="seed" type="text" autocomplete="off" placeholder="random">
+    </label>
+</div>
+
+<canvas id="canvas" width="720" height="1100"></canvas>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+
+const palettes={
+    classic:[
+        "#ff4a00",
+        "#d60000",
+        "#6926a8",
+        "#0099c8",
+        "#99ee00",
+        "#050505",
+        "#f4efe3"
+    ],
+    signal:[
+        "#f04412",
+        "#f2dc16",
+        "#15a8cc",
+        "#2323a8",
+        "#050505",
+        "#f7f2e8"
+    ],
+    coolhot:[
+        "#00a8c8",
+        "#34d6c4",
+        "#ff5a00",
+        "#d61518",
+        "#6f2ca8",
+        "#050505"
+    ],
+    acid:[
+        "#b9ef00",
+        "#58c900",
+        "#ff3d00",
+        "#0096d6",
+        "#6b23a8",
+        "#050505"
+    ],
+    night:[
+        "#050505",
+        "#181818",
+        "#d71920",
+        "#7b002c",
+        "#95e600",
+        "#b8f5ff"
+    ]
+};
+
+let rng=Math.random;
+
+function hashSeed(text){
+    let h=2166136261;
+
+    for(let i=0;i<text.length;i++){
+        h^=text.charCodeAt(i);
+        h=Math.imul(h,16777619);
+    }
+
+    return h>>>0;
+}
+
+function mulberry32(seed){
+    return function(){
+        seed|=0;
+        seed=seed+0x6D2B79F5|0;
+        let t=Math.imul(seed^seed>>>15,1|seed);
+        t=t+Math.imul(t^t>>>7,61|t)^t;
+        return ((t^t>>>14)>>>0)/4294967296;
+    };
+}
+
+function rand(a,b){
+    return a+rng()*(b-a);
+}
+
+function chance(value){
+    return rng()<value;
+}
+
+function pick(arr){
+    return arr[Math.floor(rand(0,arr.length))];
+}
+
+function shuffle(arr){
+    const copy=arr.slice();
+
+    for(let i=copy.length-1;i>0;i--){
+        const j=Math.floor(rand(0,i+1));
+        const tmp=copy[i];
+        copy[i]=copy[j];
+        copy[j]=tmp;
+    }
+
+    return copy;
+}
+
+function selectedPalette(){
+    const value=document.getElementById("palette").value;
+
+    if(value==="random"){
+        return pick(Object.values(palettes));
+    }
+
+    return palettes[value];
+}
+
+function setCanvasSize(){
+    const format=document.getElementById("format").value;
+
+    if(format==="portrait"){
+        canvas.width=720;
+        canvas.height=1100;
+    }
+
+    if(format==="landscape"){
+        canvas.width=1200;
+        canvas.height=800;
+    }
+
+    if(format==="square"){
+        canvas.width=1000;
+        canvas.height=1000;
+    }
+}
+
+function pointAlong(angle,distance,origin){
+    return {
+        x:origin.x+Math.cos(angle)*distance,
+        y:origin.y+Math.sin(angle)*distance
+    };
+}
+
+function stripPolygon(cx,cy,angle,width,length){
+    const dx=Math.cos(angle)*length;
+    const dy=Math.sin(angle)*length;
+    const nx=-Math.sin(angle)*width/2;
+    const ny=Math.cos(angle)*width/2;
+
+    return [
+        {x:cx-dx+nx,y:cy-dy+ny},
+        {x:cx+dx+nx,y:cy+dy+ny},
+        {x:cx+dx-nx,y:cy+dy-ny},
+        {x:cx-dx-nx,y:cy-dy-ny}
+    ];
+}
+
+function drawPolygon(points,color,strokeWidth){
+    ctx.beginPath();
+    ctx.moveTo(points[0].x,points[0].y);
+
+    for(let i=1;i<points.length;i++){
+        ctx.lineTo(points[i].x,points[i].y);
+    }
+
+    ctx.closePath();
+    ctx.fillStyle=color;
+    ctx.fill();
+
+    ctx.lineWidth=strokeWidth;
+    ctx.strokeStyle="#050505";
+    ctx.lineJoin="miter";
+    ctx.miterLimit=2.4;
+    ctx.stroke();
+}
+
+function drawBand(band){
+    drawPolygon(
+        stripPolygon(
+            band.cx,
+            band.cy,
+            band.angle,
+            band.width,
+            band.length
+        ),
+        band.color,
+        band.stroke
+    );
+}
+
+function colorPool(palette){
+    return palette.filter(color=>color!=="#050505");
+}
+
+function nextColor(state, allowBlack){
+    const blackChance=Number(document.getElementById("blackness").value)/100;
+
+    if(allowBlack && chance(blackChance)){
+        state.used.add("#050505");
+        return "#050505";
+    }
+
+    if(state.queue.length===0){
+        state.queue=shuffle(state.colors);
+    }
+
+    const color=state.queue.pop();
+    state.used.add(color);
+    return color;
+}
+
+function diagonalAngle(w,h){
+    const slope=Math.atan2(h,w);
+    const base=chance(.5) ? slope : -slope;
+    return base+rand(-.22,.22);
+}
+
+function crossingAngle(base){
+    const turn=chance(.5) ? Math.PI/2 : -Math.PI/2;
+    return base+turn+rand(-.38,.38);
+}
+
+function bandNearCanvas(w,h,angle,bias){
+    const diagonal=Math.sqrt(w*w+h*h);
+    const normal=angle+Math.PI/2;
+    const center={
+        x:w/2,
+        y:h/2
+    };
+    const offset=rand(-diagonal*.34,diagonal*.34)+(bias||0);
+    return pointAlong(normal,offset,center);
+}
+
+function drawSplitLines(band,state){
+    const splitAmount=Number(document.getElementById("splits").value)/100;
+
+    if(!chance(splitAmount)){
+        return;
+    }
+
+    const count=chance(.35) ? 2 : 1;
+    const normal=band.angle+Math.PI/2;
+
+    for(let i=0;i<count;i++){
+        const offset=rand(-band.width*.34,band.width*.34);
+        const center=pointAlong(normal,offset,{x:band.cx,y:band.cy});
+        const width=rand(8,Math.max(12,band.width*.13));
+
+        drawBand({
+            cx:center.x,
+            cy:center.y,
+            angle:band.angle+rand(-.015,.015),
+            width,
+            length:band.length*1.05,
+            color:nextColor(state,true),
+            stroke:rand(3,7)
+        });
+    }
+}
+
+function drawTip(w,h,angle,state){
+    const diagonal=Math.sqrt(w*w+h*h);
+    const side=chance(.5) ? -1 : 1;
+    const normal=angle+Math.PI/2;
+    const center=bandNearCanvas(w,h,angle);
+    const root=pointAlong(normal,rand(-diagonal*.18,diagonal*.18),center);
+    const tip=pointAlong(angle,side*diagonal*1.35,root);
+    const baseCenter=pointAlong(angle,-side*diagonal*.35,root);
+    const half=rand(diagonal*.055,diagonal*.16);
+
+    drawPolygon(
+        [
+            tip,
+            pointAlong(normal,half,baseCenter),
+            pointAlong(normal,-half,baseCenter)
+        ],
+        nextColor(state,true),
+        rand(5,10)
+    );
+}
+
+function visibleColorCount(w,h,margin){
+    const samples=9;
+    const colors=new Set();
+    const left=Math.max(0,margin+8);
+    const top=Math.max(0,margin+8);
+    const right=Math.min(w-1,w-margin-8);
+    const bottom=Math.min(h-1,h-margin-8);
+
+    for(let y=0;y<samples;y++){
+        for(let x=0;x<samples;x++){
+            const px=Math.round(left+(right-left)*(x+.5)/samples);
+            const py=Math.round(top+(bottom-top)*(y+.5)/samples);
+            const data=ctx.getImageData(px,py,1,1).data;
+            colors.add(data[0]+","+data[1]+","+data[2]);
+        }
+    }
+
+    return colors.size;
+}
+
+function paintComposition(){
+    setCanvasSize();
+
+    const w=canvas.width;
+    const h=canvas.height;
+    const palette=selectedPalette();
+    const colors=colorPool(palette);
+    const useBorder=document.getElementById("border").checked;
+    const forms=Number(document.getElementById("forms").value);
+    const useCrossings=document.getElementById("crossings").checked;
+    const useTips=document.getElementById("tips").checked;
+    const dominantChance=Number(document.getElementById("dominant").value)/100;
+    const diagonal=Math.sqrt(w*w+h*h);
+    const margin=useBorder ? rand(26,58) : 0;
+    const state={
+        colors,
+        queue:shuffle(colors),
+        used:new Set()
+    };
+
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle=useBorder ? "#f3efe4" : "#ffffff";
+    ctx.fillRect(0,0,w,h);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(margin,margin,w-margin*2,h-margin*2);
+    ctx.clip();
+
+    const background=nextColor(state,false);
+    ctx.fillStyle=background;
+    ctx.fillRect(margin,margin,w-margin*2,h-margin*2);
+
+    const mainAngle=diagonalAngle(w,h);
+    const bands=[];
+    const dominantWidth=chance(dominantChance)
+        ? rand(diagonal*.17,diagonal*.32)
+        : rand(diagonal*.09,diagonal*.16);
+    const dominantCenter=bandNearCanvas(w,h,mainAngle,rand(-diagonal*.08,diagonal*.08));
+
+    bands.push({
+        cx:dominantCenter.x,
+        cy:dominantCenter.y,
+        angle:mainAngle,
+        width:dominantWidth,
+        length:diagonal*1.75,
+        color:nextColor(state,true),
+        stroke:rand(7,13),
+        split:true
+    });
+
+    if(useCrossings){
+        const angle=crossingAngle(mainAngle);
+        const center=bandNearCanvas(w,h,angle,rand(-diagonal*.12,diagonal*.12));
+
+        bands.push({
+            cx:center.x,
+            cy:center.y,
+            angle,
+            width:rand(diagonal*.08,diagonal*.2),
+            length:diagonal*1.72,
+            color:nextColor(state,true),
+            stroke:rand(6,12),
+            split:true
+        });
+    }
+
+    const remaining=Math.max(2,forms-bands.length);
+
+    for(let i=0;i<remaining;i++){
+        const followsMain=chance(.62);
+        const angle=followsMain
+            ? mainAngle+rand(-.24,.24)
+            : crossingAngle(mainAngle)+rand(-.28,.28);
+        const center=bandNearCanvas(w,h,angle);
+        const narrow=chance(.42);
+
+        bands.push({
+            cx:center.x,
+            cy:center.y,
+            angle,
+            width:narrow ? rand(diagonal*.018,diagonal*.055) : rand(diagonal*.055,diagonal*.14),
+            length:diagonal*rand(1.35,1.95),
+            color:nextColor(state,true),
+            stroke:narrow ? rand(3,7) : rand(5,11),
+            split:!narrow && chance(.45)
+        });
+    }
+
+    bands
+        .sort((a,b)=>b.width-a.width)
+        .forEach(band=>{
+            drawBand(band);
+
+            if(band.split){
+                drawSplitLines(band,state);
+            }
+        });
+
+    if(useTips){
+        const count=chance(.5) ? 1 : 2;
+
+        for(let i=0;i<count;i++){
+            drawTip(w,h,chance(.7) ? mainAngle : crossingAngle(mainAngle),state);
+        }
+    }
+
+    ctx.restore();
+
+    if(useBorder){
+        ctx.lineWidth=4;
+        ctx.strokeStyle="#111";
+        ctx.strokeRect(margin,margin,w-margin*2,h-margin*2);
+    }
+
+    return {
+        used:state.used.size,
+        visible:visibleColorCount(w,h,margin)
+    };
+}
+
+function configureRng(){
+    const input=document.getElementById("seed");
+    const raw=input.value.trim();
+
+    if(raw){
+        rng=mulberry32(hashSeed(raw));
+        return;
+    }
+
+    const seed=String(Math.floor(Math.random()*1e9));
+    input.value=seed;
+    rng=mulberry32(hashSeed(seed));
+}
+
+function generate(){
+    configureRng();
+
+    for(let attempt=0;attempt<8;attempt++){
+        const result=paintComposition();
+
+        if(result.used>=3 && result.visible>=3){
+            return;
+        }
+
+        const seed=String(Math.floor(Math.random()*1e9));
+        document.getElementById("seed").value=seed;
+        rng=mulberry32(hashSeed(seed));
+    }
+}
+
+document
+    .getElementById("generateBtn")
+    .addEventListener("click",()=>{
+        document.getElementById("seed").value="";
+        generate();
+    });
+
+canvas.addEventListener("click",()=>{
+    document.getElementById("seed").value="";
+    generate();
+});
+
+document
+    .getElementById("downloadBtn")
+    .addEventListener("click",()=>{
+        const a=document.createElement("a");
+        a.download="ribbon-abstract.png";
+        a.href=canvas.toDataURL("image/png");
+        a.click();
+    });
+
+document
+    .getElementById("format")
+    .addEventListener("change",generate);
+
+generate();
+</script>
+</body>
+</html>
