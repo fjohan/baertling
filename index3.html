@@ -135,6 +135,14 @@ canvas{
     </label>
 
     <label>
+        Mode
+        <select id="mode">
+            <option value="ribbon">Ribbon</option>
+            <option value="minimal">Minimal</option>
+        </select>
+    </label>
+
+    <label>
         Major Forms
         <input id="forms" type="range" min="4" max="12" value="7">
     </label>
@@ -467,7 +475,136 @@ function visibleColorCount(w,h,margin){
     return colors.size;
 }
 
+function paintMinimalComposition(){
+    setCanvasSize();
+
+    const w=canvas.width;
+    const h=canvas.height;
+    const palette=selectedPalette();
+    const colors=colorPool(palette);
+    const useBorder=document.getElementById("border").checked;
+    const blackChance=Number(document.getElementById("blackness").value)/100;
+    const dominantChance=Number(document.getElementById("dominant").value)/100;
+    const diagonal=Math.sqrt(w*w+h*h);
+    const margin=useBorder ? rand(28,64) : 0;
+    const state={
+        colors,
+        queue:shuffle(colors),
+        used:new Set()
+    };
+
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle=useBorder ? "#f3efe4" : "#ffffff";
+    ctx.fillRect(0,0,w,h);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(margin,margin,w-margin*2,h-margin*2);
+    ctx.clip();
+
+    const background=nextColor(state,false);
+    ctx.fillStyle=background;
+    ctx.fillRect(margin,margin,w-margin*2,h-margin*2);
+
+    const mainAngle=diagonalAngle(w,h);
+    const formCount=Math.floor(rand(2,4));
+    const bands=[];
+    const dominantCenter=bandNearCanvas(
+        w,
+        h,
+        mainAngle,
+        rand(-diagonal*.13,diagonal*.13)
+    );
+
+    bands.push({
+        cx:dominantCenter.x,
+        cy:dominantCenter.y,
+        angle:mainAngle,
+        width:chance(dominantChance)
+            ? rand(diagonal*.22,diagonal*.42)
+            : rand(diagonal*.15,diagonal*.24),
+        length:diagonal*1.85,
+        color:nextColor(state,true),
+        stroke:rand(8,14)
+    });
+
+    if(formCount>=3){
+        const angle=crossingAngle(mainAngle)+rand(-.14,.14);
+        const center=bandNearCanvas(
+            w,
+            h,
+            angle,
+            rand(-diagonal*.16,diagonal*.16)
+        );
+
+        bands.push({
+            cx:center.x,
+            cy:center.y,
+            angle,
+            width:rand(diagonal*.08,diagonal*.2),
+            length:diagonal*1.75,
+            color:nextColor(state,true),
+            stroke:rand(6,12)
+        });
+    }
+
+    if(formCount>=2){
+        const angle=mainAngle+rand(-.28,.28);
+        const center=bandNearCanvas(
+            w,
+            h,
+            angle,
+            rand(-diagonal*.22,diagonal*.22)
+        );
+
+        bands.push({
+            cx:center.x,
+            cy:center.y,
+            angle,
+            width:rand(diagonal*.035,diagonal*.09),
+            length:diagonal*1.65,
+            color:chance(blackChance+.18)
+                ? "#050505"
+                : nextColor(state,false),
+            stroke:rand(5,10)
+        });
+
+        state.used.add(bands[bands.length-1].color);
+    }
+
+    bands
+        .sort((a,b)=>b.width-a.width)
+        .forEach(drawBand);
+
+    if(chance(.28)){
+        drawTip(
+            w,
+            h,
+            chance(.7) ? mainAngle : crossingAngle(mainAngle),
+            state
+        );
+    }
+
+    ctx.restore();
+
+    if(useBorder){
+        ctx.lineWidth=4;
+        ctx.strokeStyle="#111";
+        ctx.strokeRect(margin,margin,w-margin*2,h-margin*2);
+    }
+
+    return {
+        used:state.used.size,
+        visible:visibleColorCount(w,h,margin),
+        minimumVisible:2
+    };
+}
+
 function paintComposition(){
+    if(document.getElementById("mode").value==="minimal"){
+        return paintMinimalComposition();
+    }
+
     setCanvasSize();
 
     const w=canvas.width;
@@ -584,7 +721,8 @@ function paintComposition(){
 
     return {
         used:state.used.size,
-        visible:visibleColorCount(w,h,margin)
+        visible:visibleColorCount(w,h,margin),
+        minimumVisible:3
     };
 }
 
@@ -607,8 +745,9 @@ function generate(){
 
     for(let attempt=0;attempt<8;attempt++){
         const result=paintComposition();
+        const minimumVisible=result.minimumVisible || 3;
 
-        if(result.used>=3 && result.visible>=3){
+        if(result.used>=minimumVisible && result.visible>=minimumVisible){
             return;
         }
 
