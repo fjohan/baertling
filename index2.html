@@ -330,7 +330,53 @@ function setCanvasSize(){
     }
 }
 
-function generate(){
+function visibleColorCount(w,h,margin){
+
+    const samples=9;
+    const colors=new Set();
+    const left=Math.max(0,margin+8);
+    const top=Math.max(0,margin+8);
+    const right=Math.min(w-1,w-margin-8);
+    const bottom=Math.min(h-1,h-margin-8);
+
+    for(let y=0;y<samples;y++){
+
+        for(let x=0;x<samples;x++){
+
+            const px=
+                Math.round(
+                    left+
+                    (right-left)*
+                    (x+.5)/samples
+                );
+
+            const py=
+                Math.round(
+                    top+
+                    (bottom-top)*
+                    (y+.5)/samples
+                );
+
+            const data=
+                ctx.getImageData(
+                    px,
+                    py,
+                    1,
+                    1
+                ).data;
+
+            colors.add(
+                data[0]+","+
+                data[1]+","+
+                data[2]
+            );
+        }
+    }
+
+    return colors.size;
+}
+
+function paintComposition(){
 
     setCanvasSize();
 
@@ -471,6 +517,22 @@ function generate(){
             w-margin*2,
             h-margin*2
         );
+    }
+
+    return visibleColorCount(
+        w,
+        h,
+        margin
+    );
+}
+
+function generate(){
+
+    for(let attempt=0;attempt<8;attempt++){
+
+        if(paintComposition()>=3){
+            return;
+        }
     }
 }
 
